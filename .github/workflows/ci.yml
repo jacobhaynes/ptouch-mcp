@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # The renderer needs a real TrueType font; the runner image does not ship one
+      # at the path the code looks for first.
+      - name: Install fonts
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-dejavu-core
+
+      - name: Install
+        run: pip install -e '.[dev]'
+
+      - name: Test
+        env:
+          PTOUCH_BACKEND: dry
+        run: pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ptouch-mcp:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Proves the image actually serves: start it in dry mode, print a label, and
+      # confirm a PNG came out the other end.
+      - name: Smoke test the image
+        run: |
+          docker run -d --name ptouch-ci \
+            -e PTOUCH_BACKEND=dry \
+            -e PTOUCH_DRY_RUN_DIR=/tmp/labels \
+            -p 8080:8080 ptouch-mcp:ci
+
+          for i in $(seq 1 30); do
+            curl -fs http://127.0.0.1:8080/healthz >/dev/null && break
+            sleep 1
+          done
+
+          echo "--- status ---"
+          curl -fsS http://127.0.0.1:8080/status | tee /tmp/status.json
+          grep -q '"model": *"PT-P710BT"' /tmp/status.json
+
+          echo "--- print ---"
+          curl -fsS -X POST http://127.0.0.1:8080/print \
+            -H 'Content-Type: application/json' \
+            -d '{"text":"CI smoke test","copies":2}' | tee /tmp/print.json
+          grep -q '"copies": *2' /tmp/print.json
+          test "$(docker exec ptouch-ci sh -c 'ls /tmp/labels | wc -l')" = "2"
+
+          echo "--- preview is a PNG ---"
+          curl -fsS -X POST http://127.0.0.1:8080/preview \
+            -H 'Content-Type: application/json' \
+            -d '{"text":"Christmas Decor","tape_mm":12}' -o /tmp/preview.png
+          file /tmp/preview.png | grep -q 'PNG image data, 469 x 70'
+
+          echo "--- fonts resolved inside the image ---"
+          docker exec ptouch-ci python -c "from ptouch_mcp.labels import find_font; print(find_font())"
+
+      - name: Container logs
+        if: always()
+        run: docker logs ptouch-ci || true
