@@ -75,11 +75,16 @@ jobs:
           grep -q '"copies": *2' /tmp/print.json
           test "$(docker exec ptouch-ci sh -c 'ls /tmp/labels | wc -l')" = "2"
 
-          echo "--- preview is a PNG ---"
-          curl -fsS -X POST http://127.0.0.1:8080/preview \
+          echo "--- preview is a PNG of the right height ---"
+          # Height is the printer's print-pin count for the tape and is
+          # font-independent. Width is not -- it depends on which font resolved
+          # inside the image -- so do not assert on it.
+          curl -fsS -D /tmp/preview.headers -X POST http://127.0.0.1:8080/preview \
             -H 'Content-Type: application/json' \
             -d '{"text":"Christmas Decor","tape_mm":12}' -o /tmp/preview.png
-          file /tmp/preview.png | grep -q 'PNG image data, 469 x 70'
+          file /tmp/preview.png | grep -q 'PNG image data'
+          grep -i '^x-label-size-px:' /tmp/preview.headers
+          grep -iq '^x-label-size-px:.*x70$' /tmp/preview.headers
 
           echo "--- fonts resolved inside the image ---"
           docker exec ptouch-ci python -c "from ptouch_mcp.labels import find_font; print(find_font())"
