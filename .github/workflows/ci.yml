@@ -83,8 +83,10 @@ jobs:
             -H 'Content-Type: application/json' \
             -d '{"text":"Christmas Decor","tape_mm":12}' -o /tmp/preview.png
           file /tmp/preview.png | grep -q 'PNG image data'
-          grep -i '^x-label-size-px:' /tmp/preview.headers
-          grep -iq '^x-label-size-px:.*x70$' /tmp/preview.headers
+          # HTTP header lines end CRLF, so strip the CR before anchoring on $.
+          tr -d '\r' < /tmp/preview.headers > /tmp/preview.headers.lf
+          grep -i '^x-label-size-px:' /tmp/preview.headers.lf
+          grep -iq '^x-label-size-px:.*x70$' /tmp/preview.headers.lf
 
           echo "--- fonts resolved inside the image ---"
           docker exec ptouch-ci python -c "from ptouch_mcp.labels import find_font; print(find_font())"
