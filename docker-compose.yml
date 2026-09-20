@@ -1,0 +1,19 @@
+services:
+  ptouch-mcp:
+    build: .
+    container_name: ptouch-mcp
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PTOUCH_MODEL: PT-P710BT
+      PTOUCH_TAPE_MM: "24"
+      PTOUCH_MAX_COPIES: "20"
+    # The printer, handed in as a raw USB bus rather than a fixed device node.
+    # A cgroup rule plus the bus mount keeps working when the printer is unplugged
+    # and plugged back in; a `devices:` entry does not, because the node is
+    # recreated with a new number. It also avoids needing a udev rule on the host.
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb
+    device_cgroup_rules:
+      - 'c 189:* rmw'
