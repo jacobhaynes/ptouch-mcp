@@ -17,11 +17,11 @@ Text is rendered with Pillow and sent to the printer by the
 [`ptouch`](https://github.com/nbuchwitz/ptouch) library over USB or raw TCP. No CUPS, no
 Brother driver, no print queue.
 
-> **Status: everything but the last inch is verified.** CI builds the image, starts it,
-> and checks that it serves — status, a two-copy print, and a preview of the right
-> height. What has *not* been confirmed is the final USB write to a real PT-P710BT and
-> tape coming out of the machine. Treat the hardware path as unproven until someone
-> reports otherwise.
+> **Verified on hardware.** Printing, cutting, fonts and 360 dpi output are confirmed
+> on a **PT-P750W over the network**, deployed as a container and driven both over
+> HTTP and over MCP. The **USB** path is exercised by the code but has not been
+> confirmed against a physical printer — macOS will not let libusb claim a
+> printer-class device, so it needs a Linux host to test.
 
 ## What it does
 
