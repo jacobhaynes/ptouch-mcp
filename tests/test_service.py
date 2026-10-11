@@ -159,32 +159,39 @@ def test_half_cut_cannot_be_forced_on_a_printer_that_lacks_it():
     assert _backend(model="PT-P710BT", half_cut=True).half_cut is False
 
 
-def test_mcp_endpoint_answers_for_a_non_localhost_host_header():
+def test_mcp_endpoint_answers_for_non_localhost_host_headers():
     """The SDK's default DNS-rebinding protection only allows 127.0.0.1.
 
-    This service is meant to be called across a LAN, so a Host header naming the
-    server's own address must not be rejected with 421.
+    This service is meant to be called across a LAN, so a Host header naming
+    anything other than localhost must not be rejected with 421.
+
+    Hosts here are documentation-reserved on purpose: any non-localhost value
+    exercises the same branch, so there is no reason to name a real one.
+
+    All the cases share one TestClient, rather than parametrising: the client's
+    context manager runs the app lifespan, and the MCP session manager refuses to
+    start twice on the same app instance.
     """
-    # The context manager matters: it runs the lifespan that starts the MCP
-    # session manager, which a bare TestClient does not.
+    hosts = ["192.0.2.10:8090", "label-printer.example:8090", "printer.local"]
     with TestClient(service.app) as c:
-        resp = c.post(
-            "/mcp/",
-            headers={
-                "Host": "192.168.10.49:8090",
-                "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream",
-            },
-            json={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {
-                    "protocolVersion": "2025-06-18",
-                    "capabilities": {},
-                    "clientInfo": {"name": "test", "version": "0"},
+        for host in hosts:
+            resp = c.post(
+                "/mcp/",
+                headers={
+                    "Host": host,
+                    "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream",
                 },
-            },
-        )
-    assert resp.status_code != 421, "Host header rejected; MCP unreachable over the LAN"
-    assert resp.status_code < 400
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2025-06-18",
+                        "capabilities": {},
+                        "clientInfo": {"name": "test", "version": "0"},
+                    },
+                },
+            )
+            assert resp.status_code != 421, f"Host {host!r} rejected; MCP unreachable over a LAN"
+            assert resp.status_code < 400, f"Host {host!r} -> {resp.status_code}"
