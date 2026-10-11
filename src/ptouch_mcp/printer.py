@@ -91,6 +91,18 @@ class Backend:
         self.transport = "none"
 
     @property
+    def half_cut(self) -> bool:
+        """Whether to half-cut: cut the label but leave the backing paper intact.
+
+        Unset means follow the printer's capability. Asking for it on a printer
+        that cannot do it is harmless -- the PT-P710BT simply ignores the command
+        -- but it would silently give one long uncut strip, so do not.
+        """
+        if self.cfg.half_cut is None:
+            return bool(self.model.SUPPORTS_HALF_CUT)
+        return self.cfg.half_cut and bool(self.model.SUPPORTS_HALF_CUT)
+
+    @property
     def supported_tape_mm(self) -> list[float]:
         return supported_tape_mm(self.model)
 
@@ -246,17 +258,19 @@ class HardwareBackend(Backend):
                 # cost is one small scrap per job.
                 printer.precut(built.tape_cls())
             if copies == 1:
-                printer.print(built.label, margin_mm=self.cfg.margin_mm)
+                printer.print(
+                    built.label, margin_mm=self.cfg.margin_mm, half_cut=self.half_cut
+                )
             else:
                 # A fresh label object per copy -- print_multi prepares each one.
-                # half_cut is passed as the printer's own capability: the PT-P710BT
-                # ignores the half-cut command, so it needs full cuts to separate
-                # the labels at all.
+                # Half cut leaves the backing paper continuous, so the labels stay
+                # on one strip and peel off individually. The PT-P710BT ignores the
+                # command and needs full cuts to separate them at all.
                 labels = [built.label] + [another().label for _ in range(copies - 1)]
                 printer.print_multi(
                     labels,
                     margin_mm=self.cfg.margin_mm,
-                    half_cut=self.model.SUPPORTS_HALF_CUT,
+                    half_cut=self.half_cut,
                 )
         except PTOUCH_ERRORS as exc:
             raise PrinterError(f"printing failed: {exc}") from exc

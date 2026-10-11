@@ -28,7 +28,12 @@ Brother driver, no print queue.
 - Sizes the type automatically to fill the tape — one line prints tall, three lines
   print small, the way the handheld units behave.
 - Renders a **preview** so you can look at a label before spending tape.
-- Prints *n* separate labels, each cut individually, rather than one chained strip.
+- Prints *n* separate labels, half cut where the printer supports it, so they stay
+  on one strip and peel off individually.
+- Precuts the dead tape between the print head and the cutter, so labels do not come
+  out with a long blank leader.
+- Defaults to **Helsinki**, P-touch's own typeface, when P-touch Editor is installed;
+  otherwise Nimbus Sans, a free Helvetica-metric equivalent.
 - Sizes to the printer's real **print pin count**, not the nominal tape width. On a
   PT-P710BT, 12 mm tape prints 70 dots tall, not 76 — the edge pins do not fire.
 
@@ -107,8 +112,11 @@ All via environment; see [`.env.example`](.env.example).
 | `PTOUCH_MODEL` | `PT-P710BT` | See supported printers below. |
 | `PTOUCH_HOST_ADDR` | — | Printer address, for `network` transport. |
 | `PTOUCH_TAPE_MM` | `24` | Tape width assumed when a request omits one. |
-| `PTOUCH_MARGIN_MM` | `3` | Blank tape before and after each label. |
-| `PTOUCH_FONT` | — | Path to a `.ttf`. Defaults to DejaVu Sans Bold, then Arial Bold. |
+| `PTOUCH_MARGIN_MM` | `2` | Blank tape before and after each label. |
+| `PTOUCH_PRECUT` | `1` | Eject the dead tape between head and cutter first, so labels have no blank leader. |
+| `PTOUCH_HALF_CUT` | printer default | Cut the label but not the backing, so labels peel off one strip. |
+| `PTOUCH_FONT` | — | Font path, or an alias: `helsinki`, `helsinki-narrow`, … |
+| `PTOUCH_CONNECT_RETRIES` | `4` | These printers take one session at a time; a busy socket is transient. |
 | `PTOUCH_MAX_COPIES` | `20` | Ceiling on a single request. |
 | `PTOUCH_MAX_TEXT` | `200` | Ceiling on label text length. |
 | `PTOUCH_PORT` | `8080` | Listen port. |

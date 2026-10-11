@@ -136,3 +136,24 @@ def test_a_busy_printer_is_retried_before_giving_up(monkeypatch):
     assert st.connected is False
     assert len(attempts) == 3
     assert "accept one connection at a time" in st.detail
+
+
+def _backend(**kw):
+    from ptouch_mcp.config import Config
+    from ptouch_mcp.printer import make_backend
+
+    return make_backend(Config(backend="dry", model=kw.pop("model", "PT-P750W"), **kw))
+
+
+def test_half_cut_follows_the_printer_when_unset():
+    assert _backend().half_cut is True                      # P750W can half cut
+    assert _backend(model="PT-P710BT").half_cut is False    # P710BT cannot
+
+
+def test_half_cut_can_be_turned_off_explicitly():
+    assert _backend(half_cut=False).half_cut is False
+
+
+def test_half_cut_cannot_be_forced_on_a_printer_that_lacks_it():
+    """The P710BT ignores the command, which would silently yield one uncut strip."""
+    assert _backend(model="PT-P710BT", half_cut=True).half_cut is False

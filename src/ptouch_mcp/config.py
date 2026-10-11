@@ -6,6 +6,14 @@ import os
 from dataclasses import dataclass
 
 
+def _tri(name: str) -> bool | None:
+    """Three-state flag: set true, set false, or unset (let the printer decide)."""
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return None
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
+
+
 def _num(name: str, default: float, cast=float):
     raw = os.environ.get(name)
     if raw is None or not raw.strip():
@@ -26,6 +34,7 @@ class Config:
     tape_mm: float = 24
     margin_mm: float = 2.0
     precut: bool = True
+    half_cut: bool | None = None
     connect_timeout: float = 5.0
     connect_retries: int = 4
     font: str = ""
@@ -53,6 +62,7 @@ class Config:
             margin_mm=_num("PTOUCH_MARGIN_MM", cls.margin_mm),
             precut=os.environ.get("PTOUCH_PRECUT", "1").strip().lower()
             not in {"0", "false", "no", "off"},
+            half_cut=_tri("PTOUCH_HALF_CUT"),
             connect_timeout=_num("PTOUCH_CONNECT_TIMEOUT", cls.connect_timeout),
             connect_retries=_num("PTOUCH_CONNECT_RETRIES", cls.connect_retries, int),
             font=os.environ.get("PTOUCH_FONT", cls.font),
