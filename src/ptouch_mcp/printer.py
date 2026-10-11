@@ -168,19 +168,27 @@ class HardwareBackend(Backend):
             if not self.cfg.host:
                 raise PrinterError("PTOUCH_HOST_ADDR must be set when PTOUCH_TRANSPORT=network")
             conn = ConnectionNetwork(self.cfg.host, port=self.cfg.network_port)
+            where = f"{self.cfg.host}:{self.cfg.network_port}"
         else:
             conn = ConnectionUSB()
-        printer = self.model(conn)
+            where = "USB"
+
+        # Constructing the printer is what opens the connection: LabelPrinter's
+        # __init__ calls connect() and writes the initialisation commands. So it
+        # has to happen inside the try, and must not be followed by a second
+        # connect().
         try:
-            conn.connect(printer)
+            printer = self.model(conn)
         except PrinterPermissionError as exc:
+            conn.close()
             raise PrinterError(
                 f"{exc} On Linux, run the container with /dev/bus/usb mounted. "
                 "On macOS the kernel claims printer-class devices and libusb cannot "
                 "take them -- use PTOUCH_BACKEND=dry there."
             ) from exc
         except PTOUCH_ERRORS as exc:
-            raise PrinterError(str(exc)) from exc
+            conn.close()
+            raise PrinterError(f"cannot reach the printer on {where}: {exc}") from exc
         return printer, conn
 
     def status(self) -> Status:

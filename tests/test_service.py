@@ -58,3 +58,46 @@ def test_preview_returns_png_and_prints_nothing(client, tmp_path):
     assert resp.content[:8] == b"\x89PNG\r\n\x1a\n"
     assert resp.headers["X-Label-Size-Px"].endswith("x70")
     assert list(tmp_path.glob("*.png")) == []
+
+
+def _closed_port() -> int:
+    """A port nothing is listening on, so connecting refuses immediately."""
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def test_unreachable_network_printer_reports_status_instead_of_raising():
+    """A dead printer must not turn /status into a 500.
+
+    LabelPrinter.__init__ opens the connection, so the failure surfaces from
+    constructing the printer rather than from a later connect() call.
+    """
+    from ptouch_mcp.config import Config
+    from ptouch_mcp.printer import make_backend
+
+    backend = make_backend(
+        Config(
+            backend="hardware",
+            transport="network",
+            model="PT-P750W",
+            host="127.0.0.1",
+            network_port=_closed_port(),
+        )
+    )
+    st = backend.status()
+    assert st.connected is False
+    assert "cannot reach the printer on 127.0.0.1:" in st.detail
+
+
+def test_network_transport_requires_an_address():
+    from ptouch_mcp.config import Config
+    from ptouch_mcp.printer import make_backend
+
+    backend = make_backend(
+        Config(backend="hardware", transport="network", model="PT-P750W", host="")
+    )
+    assert backend.status().connected is False
+    assert "PTOUCH_HOST_ADDR" in backend.status().detail
