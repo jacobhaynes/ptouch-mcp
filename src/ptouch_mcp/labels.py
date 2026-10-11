@@ -120,13 +120,17 @@ class BuiltLabel:
     tape_cls: type
     print_pins: int
     dpi: int
-
     image: Image.Image
+    x_scale: int = 1
 
     @property
     def size_mm(self) -> tuple[float, float]:
-        per_px = 25.4 / self.dpi
-        return (self.image.width * per_px, self.image.height * per_px)
+        # Across the tape the resolution is fixed by the print head; along it a
+        # high-resolution feed fits x_scale times as many dots into the same mm.
+        return (
+            self.image.width * 25.4 / (self.dpi * self.x_scale),
+            self.image.height * 25.4 / self.dpi,
+        )
 
     def png(self) -> bytes:
         """Preview as the printer will render it, thresholded rather than greyscale.
@@ -162,6 +166,7 @@ def render_text(
     font_path: str,
     align: str = "center",
     pad_px: int = LEAD_IN_PX,
+    x_scale: int = 1,
 ) -> Image.Image:
     """Lay out `lines` in an image exactly `height_px` tall.
 
@@ -177,7 +182,17 @@ def render_text(
     hard-thresholds at 50% coverage, but drawing straight into mode "1" uses
     FreeType's monochrome rasteriser, whose glyphs are visibly chunkier than an
     antialiased render thresholded at the same level.
+
+    `x_scale` > 1 renders at that multiple along the tape, for printers that can
+    feed at a higher resolution than their print head is wide. Type is drawn at
+    `x_scale` times the size and then squeezed back vertically, so the glyphs keep
+    their proportions but gain horizontal detail -- which is where the staircase on
+    curves and diagonals lives.
     """
+    if x_scale > 1:
+        tall = render_text(lines, height_px * x_scale, font_path, align, pad_px * x_scale)
+        return tall.resize((tall.width, height_px), Image.LANCZOS)
+
     probe = ImageDraw.Draw(Image.new("1", (1, 1)))
 
     def layout(size: int):
@@ -248,6 +263,7 @@ def build(
     model: type[LabelPrinter],
     align: str = "center",
     font: str | None = None,
+    x_scale: int = 1,
 ) -> BuiltLabel:
     """Render `text` for `tape_mm` tape on `model`.
 
@@ -274,7 +290,12 @@ def build(
 
     dpi = model.RESOLUTION_DPI
     image = render_text(
-        lines, config.print_pins, resolve_font(font), align=align, pad_px=LEAD_IN_PX
+        lines,
+        config.print_pins,
+        resolve_font(font),
+        align=align,
+        pad_px=LEAD_IN_PX,
+        x_scale=x_scale,
     )
     label = Label(image, tape_cls)
     return BuiltLabel(
@@ -284,4 +305,5 @@ def build(
         tape_cls=tape_cls,
         print_pins=config.print_pins,
         dpi=dpi,
+        x_scale=x_scale,
     )

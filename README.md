@@ -34,6 +34,22 @@ Brother driver, no print queue.
   out with a long blank leader.
 - Defaults to **Helsinki**, P-touch's own typeface, when P-touch Editor is installed;
   otherwise Nimbus Sans, a free Helvetica-metric equivalent.
+- Optionally prints at **360 dpi** along the tape, which halves the staircase on
+  curves without changing the label's size.
+
+## About 360 dpi
+
+`ptouch`'s own `high_resolution` flag duplicates every raster column and doubles the
+line count. That sets the printer's high-resolution mode bit but yields output
+identical to 180 dpi -- it preserves the geometry rather than adding detail.
+
+With `PTOUCH_HIGH_RES=1` this sends a genuinely 2x-wide raster instead: type is laid
+out at double scale and squeezed back vertically, so glyphs keep their proportions
+and gain horizontal resolution. Across the tape nothing changes -- that axis is the
+print head's 128 pins either way.
+
+Verified on a PT-P750W. Off by default, since it overrides library behaviour that
+other models have not been tested against.
 - Sizes to the printer's real **print pin count**, not the nominal tape width. On a
   PT-P710BT, 12 mm tape prints 70 dots tall, not 76 — the edge pins do not fire.
 
@@ -114,6 +130,7 @@ All via environment; see [`.env.example`](.env.example).
 | `PTOUCH_TAPE_MM` | `24` | Tape width assumed when a request omits one. |
 | `PTOUCH_MARGIN_MM` | `2` | Blank tape before and after each label. |
 | `PTOUCH_PRECUT` | `1` | Eject the dead tape between head and cutter first, so labels have no blank leader. |
+| `PTOUCH_HIGH_RES` | `0` | Print at 360 dpi along the tape instead of 180. Same size, visibly smoother curves. |
 | `PTOUCH_HALF_CUT` | printer default | Cut the label but not the backing, so labels peel off one strip. |
 | `PTOUCH_FONT` | — | Font path, or an alias: `helsinki`, `helsinki-narrow`, … |
 | `PTOUCH_CONNECT_RETRIES` | `4` | These printers take one session at a time; a busy socket is transient. |

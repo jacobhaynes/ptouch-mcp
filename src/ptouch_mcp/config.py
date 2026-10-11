@@ -35,6 +35,7 @@ class Config:
     margin_mm: float = 2.0
     precut: bool = True
     half_cut: bool | None = None
+    high_res: bool = False
     connect_timeout: float = 5.0
     connect_retries: int = 4
     font: str = ""
@@ -63,6 +64,8 @@ class Config:
             precut=os.environ.get("PTOUCH_PRECUT", "1").strip().lower()
             not in {"0", "false", "no", "off"},
             half_cut=_tri("PTOUCH_HALF_CUT"),
+            high_res=os.environ.get("PTOUCH_HIGH_RES", "").strip().lower()
+            in {"1", "true", "yes", "on"},
             connect_timeout=_num("PTOUCH_CONNECT_TIMEOUT", cls.connect_timeout),
             connect_retries=_num("PTOUCH_CONNECT_RETRIES", cls.connect_retries, int),
             font=os.environ.get("PTOUCH_FONT", cls.font),

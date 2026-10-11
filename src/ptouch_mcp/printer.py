@@ -38,6 +38,26 @@ PTOUCH_ERRORS = (
 )
 
 
+def _true_high_res(base: type[LabelPrinter]) -> type[LabelPrinter]:
+    """A printer class that prints at its high feed resolution, for real.
+
+    The library's own `high_resolution` flag duplicates every raster column and
+    doubles the line count, which sets the mode bit but produces output identical
+    to the base resolution -- no extra detail. To actually use the finer feed we
+    hand it a genuinely 2x-wide raster, which means the mode bit has to be forced
+    on here rather than asked for at print time.
+    """
+
+    class HighRes(base):  # type: ignore[valid-type,misc]
+        def _cmd_advanced_mode_settings(self, **kw):
+            kw["high_resolution"] = True
+            return super()._cmd_advanced_mode_settings(**kw)
+
+    HighRes.__name__ = f"{base.__name__}HighRes"
+    HighRes.__qualname__ = HighRes.__name__
+    return HighRes
+
+
 class PrinterError(RuntimeError):
     """The print could not be carried out. The message is safe to show a user."""
 
@@ -89,6 +109,10 @@ class Backend:
         self.cfg = cfg
         self.model = resolve_model(cfg.model)
         self.transport = "none"
+        # 2x only along the tape: across it the resolution is the print head's,
+        # which does not change.
+        self.x_scale = 2 if cfg.high_res and self.model.RESOLUTION_DPI_HIGH else 1
+        self.print_model = _true_high_res(self.model) if self.x_scale > 1 else self.model
 
     @property
     def half_cut(self) -> bool:
@@ -113,6 +137,7 @@ class Backend:
             self.model,
             align=align,
             font=self.cfg.font or None,
+            x_scale=self.x_scale,
         )
 
     def status(self) -> Status:  # pragma: no cover - overridden
@@ -200,7 +225,7 @@ class HardwareBackend(Backend):
         for attempt in range(1, max(1, self.cfg.connect_retries) + 1):
             conn, where = self._new_connection()
             try:
-                return self.model(conn), conn
+                return self.print_model(conn), conn
             except PrinterPermissionError as exc:
                 conn.close()
                 raise PrinterError(
@@ -259,7 +284,9 @@ class HardwareBackend(Backend):
                 printer.precut(built.tape_cls())
             if copies == 1:
                 printer.print(
-                    built.label, margin_mm=self.cfg.margin_mm, half_cut=self.half_cut
+                    built.label,
+                    margin_mm=self.cfg.margin_mm * self.x_scale,
+                    half_cut=self.half_cut,
                 )
             else:
                 # A fresh label object per copy -- print_multi prepares each one.
@@ -269,7 +296,7 @@ class HardwareBackend(Backend):
                 labels = [built.label] + [another().label for _ in range(copies - 1)]
                 printer.print_multi(
                     labels,
-                    margin_mm=self.cfg.margin_mm,
+                    margin_mm=self.cfg.margin_mm * self.x_scale,
                     half_cut=self.half_cut,
                 )
         except PTOUCH_ERRORS as exc:
