@@ -134,6 +134,7 @@ All via environment; see [`.env.example`](.env.example).
 | `PTOUCH_HALF_CUT` | printer default | Cut the label but not the backing, so labels peel off one strip. |
 | `PTOUCH_FONT` | — | Font path, or an alias: `helsinki`, `helsinki-narrow`, … |
 | `PTOUCH_CONNECT_RETRIES` | `4` | These printers take one session at a time; a busy socket is transient. |
+| `PTOUCH_ALLOWED_HOSTS` | `*` | Host headers the MCP endpoint accepts. The SDK otherwise allows only localhost. |
 | `PTOUCH_MAX_COPIES` | `20` | Ceiling on a single request. |
 | `PTOUCH_MAX_TEXT` | `200` | Ceiling on label text length. |
 | `PTOUCH_PORT` | `8080` | Listen port. |

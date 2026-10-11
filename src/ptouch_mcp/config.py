@@ -42,6 +42,7 @@ class Config:
     dry_run_dir: str = "/tmp/ptouch-mcp"
     max_copies: int = 20
     max_text: int = 200
+    allowed_hosts: str = "*"
     listen_host: str = "0.0.0.0"
     port: int = 8080
 
@@ -72,6 +73,7 @@ class Config:
             dry_run_dir=os.environ.get("PTOUCH_DRY_RUN_DIR", cls.dry_run_dir),
             max_copies=_num("PTOUCH_MAX_COPIES", cls.max_copies, int),
             max_text=_num("PTOUCH_MAX_TEXT", cls.max_text, int),
+            allowed_hosts=os.environ.get("PTOUCH_ALLOWED_HOSTS", cls.allowed_hosts),
             listen_host=os.environ.get("PTOUCH_LISTEN_HOST", cls.listen_host),
             port=_num("PTOUCH_PORT", cls.port, int),
         )

@@ -157,3 +157,34 @@ def test_half_cut_can_be_turned_off_explicitly():
 def test_half_cut_cannot_be_forced_on_a_printer_that_lacks_it():
     """The P710BT ignores the command, which would silently yield one uncut strip."""
     assert _backend(model="PT-P710BT", half_cut=True).half_cut is False
+
+
+def test_mcp_endpoint_answers_for_a_non_localhost_host_header():
+    """The SDK's default DNS-rebinding protection only allows 127.0.0.1.
+
+    This service is meant to be called across a LAN, so a Host header naming the
+    server's own address must not be rejected with 421.
+    """
+    # The context manager matters: it runs the lifespan that starts the MCP
+    # session manager, which a bare TestClient does not.
+    with TestClient(service.app) as c:
+        resp = c.post(
+            "/mcp/",
+            headers={
+                "Host": "192.168.10.49:8090",
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "0"},
+                },
+            },
+        )
+    assert resp.status_code != 421, "Host header rejected; MCP unreachable over the LAN"
+    assert resp.status_code < 400

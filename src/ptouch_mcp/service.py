@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from mcp.server.mcpserver import MCPServer, Image as MCPImage
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, Field
 
 from .config import Config
@@ -143,6 +144,23 @@ def preview_endpoint(req: LabelRequest) -> Response:
     )
 
 
+# The SDK validates the Host header against 127.0.0.1 by default, as DNS-rebinding
+# protection. That is right for a server a browser might reach, but this one is
+# meant to be called across the LAN by Home Assistant and by Claude: left alone it
+# answers 421 to every request that does not arrive on localhost. Allow the hosts
+# the operator names, "*" meaning any.
+_hosts = [h.strip() for h in cfg.allowed_hosts.split(",") if h.strip()]
+_security = TransportSecuritySettings(
+    enable_dns_rebinding_protection="*" not in _hosts,
+    allowed_hosts=_hosts,
+    allowed_origins=_hosts,
+)
+
 # stateless_http keeps each call self-contained -- no session to expire between a
 # voice command now and the next one an hour later.
-app.mount("/mcp", mcp.streamable_http_app(streamable_http_path="/", stateless_http=True))
+app.mount(
+    "/mcp",
+    mcp.streamable_http_app(
+        streamable_http_path="/", stateless_http=True, transport_security=_security
+    ),
+)
