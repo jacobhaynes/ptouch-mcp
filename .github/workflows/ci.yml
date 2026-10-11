@@ -89,7 +89,7 @@ jobs:
           grep -iq '^x-label-size-px:.*x70$' /tmp/preview.headers.lf
 
           echo "--- fonts resolved inside the image ---"
-          docker exec ptouch-ci python -c "from ptouch_mcp.labels import find_font; print(find_font())"
+          docker exec ptouch-ci python -c "from ptouch_mcp.labels import resolve_font; print(resolve_font(None))"
 
       - name: Container logs
         if: always()

@@ -14,9 +14,12 @@ RUN python -m venv /opt/venv \
 
 FROM python:3.12-slim-bookworm
 
-# libusb is what pyusb talks to; DejaVu is the font the renderer looks for first.
+# libusb is what pyusb talks to. Nimbus Sans is a free Helvetica-metric clone and
+# the closest widely-available match to P-touch's own Helsinki; DejaVu is kept as a
+# fallback with broader glyph coverage.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libusb-1.0-0 fonts-dejavu-core \
+ && apt-get install -y --no-install-recommends \
+      libusb-1.0-0 fonts-urw-base35 fonts-dejavu-core \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /opt/venv /opt/venv

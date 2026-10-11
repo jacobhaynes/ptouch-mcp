@@ -24,7 +24,8 @@ class Config:
     host: str = ""
     network_port: int = 9100
     tape_mm: float = 24
-    margin_mm: float = 3.0
+    margin_mm: float = 2.0
+    precut: bool = True
     font: str = ""
     dry_run_dir: str = "/tmp/ptouch-mcp"
     max_copies: int = 20
@@ -48,6 +49,8 @@ class Config:
             network_port=_num("PTOUCH_NETWORK_PORT", cls.network_port, int),
             tape_mm=_num("PTOUCH_TAPE_MM", cls.tape_mm),
             margin_mm=_num("PTOUCH_MARGIN_MM", cls.margin_mm),
+            precut=os.environ.get("PTOUCH_PRECUT", "1").strip().lower()
+            not in {"0", "false", "no", "off"},
             font=os.environ.get("PTOUCH_FONT", cls.font),
             dry_run_dir=os.environ.get("PTOUCH_DRY_RUN_DIR", cls.dry_run_dir),
             max_copies=_num("PTOUCH_MAX_COPIES", cls.max_copies, int),

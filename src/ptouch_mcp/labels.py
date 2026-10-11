@@ -52,14 +52,37 @@ TAPES = {
     36: Tape36mm,
 }
 
-# First one present wins. DejaVu ships in the container; the rest let this run on a
-# developer's machine.
+# First one present wins.
+#
+# Regular weights, not bold: P-touch's own default face is Helsinki Regular, and
+# bold reads heavy on narrow tape.
+#
+# Helsinki itself is Brother's font, shipped with P-touch Editor. It is not
+# redistributed here -- this only looks for a copy you already have installed, and
+# falls back to a free Helvetica-metric clone (Nimbus Sans) otherwise.
+BROTHER_FONT_DIR = (
+    "/Applications/Brother P-touch Editor.app/Contents/Frameworks"
+    "/BRLBXWrapperMac.framework/Versions/A/Resources/fonts.bundle"
+)
+
 FONT_CANDIDATES = [
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-    "/Library/Fonts/Arial Bold.ttf",
-    "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+    f"{BROTHER_FONT_DIR}/BRHELRS0.TTF",                        # Helsinki Regular
+    "/usr/share/fonts/truetype/urw-base35/NimbusSans-Regular.t1",
+    "/usr/share/fonts/truetype/urw-base35/NimbusSans-Regular.otf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/System/Library/Fonts/Helvetica.ttc",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
 ]
+
+# Convenience names for PTOUCH_FONT, so a compose file can say "helsinki-narrow"
+# rather than carry an absolute path.
+FONT_ALIASES = {
+    "helsinki": f"{BROTHER_FONT_DIR}/BRHELRS0.TTF",
+    "helsinki-bold": f"{BROTHER_FONT_DIR}/BRHELBS0.TTF",
+    "helsinki-narrow": f"{BROTHER_FONT_DIR}/BRHENRS0.TTF",
+    "brussels": f"{BROTHER_FONT_DIR}/BRBRURS0.TTF",
+}
 
 ALIGN = {
     "left": TextLabel.Align.LEFT | TextLabel.Align.VCENTER,
@@ -76,6 +99,7 @@ class LabelError(ValueError):
 class BuiltLabel:
     label: TextLabel
     tape_mm: float
+    tape_cls: type
     print_pins: int
     dpi: int
 
@@ -91,13 +115,20 @@ class BuiltLabel:
         return buf.getvalue()
 
 
-def find_font() -> str:
+def resolve_font(spec: str | None) -> str:
+    """Turn PTOUCH_FONT into a usable path: an alias, a path, or the best default."""
+    if spec:
+        path = FONT_ALIASES.get(spec.strip().lower(), spec)
+        if not Path(path).is_file():
+            known = ", ".join(sorted(FONT_ALIASES))
+            raise LabelError(f"font {spec!r} not found (looked at {path}). Aliases: {known}")
+        return path
     for path in FONT_CANDIDATES:
         if Path(path).is_file():
             return path
     raise LabelError(
-        "no usable font found. Install fonts-dejavu-core, or set PTOUCH_FONT to a "
-        ".ttf path."
+        "no usable font found. Install fonts-urw-base35, or set PTOUCH_FONT to a "
+        "font file."
     )
 
 
@@ -145,7 +176,13 @@ def build(
             f"{model.__name__} does not support {tape_mm}mm tape. Supported: {supported}"
         )
 
-    label = TextLabel(text, tape_cls, font=font or find_font(), align=ALIGN[align])
+    label = TextLabel(text, tape_cls, font=resolve_font(font), align=ALIGN[align])
     dpi = model.RESOLUTION_DPI
     label.prepare(config.print_pins, dpi)
-    return BuiltLabel(label=label, tape_mm=tape_mm, print_pins=config.print_pins, dpi=dpi)
+    return BuiltLabel(
+        label=label,
+        tape_mm=tape_mm,
+        tape_cls=tape_cls,
+        print_pins=config.print_pins,
+        dpi=dpi,
+    )

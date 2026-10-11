@@ -218,6 +218,12 @@ class HardwareBackend(Backend):
     def emit(self, built: BuiltLabel, copies: int, another) -> list[str]:
         printer, conn = self._connect()
         try:
+            if self.cfg.precut:
+                # Eject the ~24mm of tape sitting between the print head and the
+                # cutter, so the label starts at a clean edge instead of carrying a
+                # long blank leader. This is what Brother's own driver does; the
+                # cost is one small scrap per job.
+                printer.precut(built.tape_cls())
             if copies == 1:
                 printer.print(built.label, margin_mm=self.cfg.margin_mm)
             else:
@@ -227,7 +233,9 @@ class HardwareBackend(Backend):
                 # the labels at all.
                 labels = [built.label] + [another().label for _ in range(copies - 1)]
                 printer.print_multi(
-                    labels, margin_mm=self.cfg.margin_mm, half_cut=self.model.SUPPORTS_HALF_CUT
+                    labels,
+                    margin_mm=self.cfg.margin_mm,
+                    half_cut=self.model.SUPPORTS_HALF_CUT,
                 )
         except PTOUCH_ERRORS as exc:
             raise PrinterError(f"printing failed: {exc}") from exc
