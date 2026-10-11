@@ -11,6 +11,7 @@ import io
 from dataclasses import dataclass
 from pathlib import Path
 
+from PIL import Image, ImageDraw, ImageFont
 from ptouch import (
     PTE550W,
     PTP750W,
@@ -27,7 +28,7 @@ from ptouch import (
     Tape18mm,
     Tape24mm,
     Tape36mm,
-    TextLabel,
+    Label,
 )
 
 MODELS: dict[str, type[LabelPrinter]] = {
@@ -84,34 +85,57 @@ FONT_ALIASES = {
     "brussels": f"{BROTHER_FONT_DIR}/BRBRURS0.TTF",
 }
 
-ALIGN = {
-    "left": TextLabel.Align.LEFT | TextLabel.Align.VCENTER,
-    "center": TextLabel.Align.HCENTER | TextLabel.Align.VCENTER,
-    "right": TextLabel.Align.RIGHT | TextLabel.Align.VCENTER,
-}
+ALIGNMENTS = ("left", "center", "right")
+
+# Blank columns at each end of the label, on top of the tape margin the printer
+# feeds. Keeps text off the cut edge.
+LEAD_IN_PX = 12
+
+# Largest type, as a fraction of the printable height. Matches what the library's
+# own auto-sizing uses, and leaves a little air top and bottom.
+MAX_FILL = 0.80
+
+# Rows of white kept at the top and bottom of the printable area, so ink never
+# runs right to the edge (which multi-line labels otherwise do).
+EDGE_GUARD_PX = 2
 
 
 class LabelError(ValueError):
     """The label could not be built. The message is safe to show a user."""
 
 
+# The printer's own conversion: anything at least half covered becomes a dot.
+_THRESHOLD = [0] * 128 + [255] * 128
+
+
+def to_bitmap(image: Image.Image) -> Image.Image:
+    """Exactly what the printer will put on the tape."""
+    return image.convert("L").point(_THRESHOLD, mode="1")
+
+
 @dataclass
 class BuiltLabel:
-    label: TextLabel
+    label: Label
     tape_mm: float
     tape_cls: type
     print_pins: int
     dpi: int
 
+    image: Image.Image
+
     @property
     def size_mm(self) -> tuple[float, float]:
-        img = self.label.image
         per_px = 25.4 / self.dpi
-        return (img.width * per_px, img.height * per_px)
+        return (self.image.width * per_px, self.image.height * per_px)
 
     def png(self) -> bytes:
+        """Preview as the printer will render it, thresholded rather than greyscale.
+
+        A smooth antialiased preview would flatter the result: none of that grey
+        reaches the tape.
+        """
         buf = io.BytesIO()
-        self.label.image.save(buf, format="PNG")
+        to_bitmap(self.image).save(buf, format="PNG")
         return buf.getvalue()
 
 
@@ -130,6 +154,77 @@ def resolve_font(spec: str | None) -> str:
         "no usable font found. Install fonts-urw-base35, or set PTOUCH_FONT to a "
         "font file."
     )
+
+
+def render_text(
+    lines: list[str],
+    height_px: int,
+    font_path: str,
+    align: str = "center",
+    pad_px: int = LEAD_IN_PX,
+) -> Image.Image:
+    """Lay out `lines` in an image exactly `height_px` tall.
+
+    Vertical placement centres the *body* of the text -- cap top of the first line
+    down to the baseline of the last -- rather than the ink bounding box. Those are
+    not the same thing: a descender drags the ink box down, which pushes the visible
+    letters up by half the tail. On 12mm tape the `y` in "To Dry Cleaner" shifts the
+    whole word 0.56mm high, which is plainly visible on a 10mm-tall label, while
+    all-caps text looks fine. Centring on the baseline makes every label sit the
+    same way regardless of which glyphs happen to be in it.
+
+    Rendered greyscale, not 1-bit. The printer is black-and-white and the library
+    hard-thresholds at 50% coverage, but drawing straight into mode "1" uses
+    FreeType's monochrome rasteriser, whose glyphs are visibly chunkier than an
+    antialiased render thresholded at the same level.
+    """
+    probe = ImageDraw.Draw(Image.new("1", (1, 1)))
+
+    def layout(size: int):
+        font = ImageFont.truetype(font_path, size)
+        ascent, _ = font.getmetrics()
+        advance = sum(font.getmetrics())            # natural line height
+        boxes = [font.getbbox(ln) for ln in lines]
+        width = max(b[2] - b[0] for b in boxes)
+        cap_top = boxes[0][1]                       # ink top of the first line
+        baseline_last = (len(lines) - 1) * advance + ascent
+        ink_top = cap_top
+        ink_bottom = max(b[3] + i * advance for i, b in enumerate(boxes))
+        return font, ascent, advance, boxes, width, ink_top, ink_bottom, baseline_last
+
+    # Largest size whose ink still fits the printable height, edge guard included.
+    usable = height_px - 2 * EDGE_GUARD_PX
+    lo, hi, best = 6, max(8, int(height_px * MAX_FILL)), 6
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        *_, ink_top, ink_bottom, _ = layout(mid)
+        if ink_bottom - ink_top <= usable:
+            best, lo = mid, mid + 1
+        else:
+            hi = mid - 1
+
+    font, ascent, advance, boxes, width, cap_top, ink_bottom, baseline_last = layout(best)
+
+    img = Image.new("L", (width + 2 * pad_px, height_px), 255)   # 255 = white
+    draw = ImageDraw.Draw(img)
+
+    # Put the midpoint of (cap top .. last baseline) on the centre line.
+    origin_y = round(height_px / 2 - (cap_top + baseline_last) / 2)
+    # ...but never let a descender or an ascender fall off the tape.
+    origin_y = min(origin_y, height_px - EDGE_GUARD_PX - 1 - ink_bottom)
+    origin_y = max(origin_y, EDGE_GUARD_PX - cap_top)
+
+    for i, (line, box) in enumerate(zip(lines, boxes)):
+        line_w = box[2] - box[0]
+        if align == "left":
+            x = pad_px
+        elif align == "right":
+            x = img.width - pad_px - line_w
+        else:
+            x = (img.width - line_w) // 2
+        draw.text((x - box[0], origin_y + i * advance), line, font=font, fill=0)
+
+    return img
 
 
 def resolve_model(name: str) -> type[LabelPrinter]:
@@ -160,10 +255,11 @@ def build(
     printable dot count, which is narrower than the tape itself because the edge
     pins are unused.
     """
-    if not text.strip():
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if not lines:
         raise LabelError("label text is empty")
-    if align not in ALIGN:
-        raise LabelError(f"align must be one of {', '.join(ALIGN)}")
+    if align not in ALIGNMENTS:
+        raise LabelError(f"align must be one of {', '.join(ALIGNMENTS)}")
 
     tape_cls = TAPES.get(tape_mm)
     if tape_cls is None:
@@ -176,11 +272,14 @@ def build(
             f"{model.__name__} does not support {tape_mm}mm tape. Supported: {supported}"
         )
 
-    label = TextLabel(text, tape_cls, font=resolve_font(font), align=ALIGN[align])
     dpi = model.RESOLUTION_DPI
-    label.prepare(config.print_pins, dpi)
+    image = render_text(
+        lines, config.print_pins, resolve_font(font), align=align, pad_px=LEAD_IN_PX
+    )
+    label = Label(image, tape_cls)
     return BuiltLabel(
         label=label,
+        image=image,
         tape_mm=tape_mm,
         tape_cls=tape_cls,
         print_pins=config.print_pins,
