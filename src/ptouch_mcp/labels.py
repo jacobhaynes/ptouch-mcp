@@ -68,8 +68,7 @@ BROTHER_FONT_DIR = (
 
 FONT_CANDIDATES = [
     f"{BROTHER_FONT_DIR}/BRHELRS0.TTF",                        # Helsinki Regular
-    "/usr/share/fonts/truetype/urw-base35/NimbusSans-Regular.t1",
-    "/usr/share/fonts/truetype/urw-base35/NimbusSans-Regular.otf",
+    "/usr/share/fonts/opentype/urw-base35/NimbusSans-Regular.otf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/System/Library/Fonts/Helvetica.ttc",
