@@ -85,6 +85,7 @@ def test_unreachable_network_printer_reports_status_instead_of_raising():
             model="PT-P750W",
             host="127.0.0.1",
             network_port=_closed_port(),
+            connect_retries=1,
         )
     )
     st = backend.status()
@@ -97,7 +98,41 @@ def test_network_transport_requires_an_address():
     from ptouch_mcp.printer import make_backend
 
     backend = make_backend(
-        Config(backend="hardware", transport="network", model="PT-P750W", host="")
+        Config(
+            backend="hardware", transport="network", model="PT-P750W",
+            host="", connect_retries=1,
+        )
     )
     assert backend.status().connected is False
     assert "PTOUCH_HOST_ADDR" in backend.status().detail
+
+
+def test_a_busy_printer_is_retried_before_giving_up(monkeypatch):
+    """These printers take one session at a time, so a busy socket is transient."""
+    from ptouch_mcp.config import Config
+    from ptouch_mcp.printer import make_backend
+
+    backend = make_backend(
+        Config(
+            backend="hardware",
+            transport="network",
+            model="PT-P750W",
+            host="127.0.0.1",
+            network_port=_closed_port(),
+            connect_retries=3,
+        )
+    )
+    monkeypatch.setattr("ptouch_mcp.printer.time.sleep", lambda _: None)
+
+    attempts = []
+    real = backend._new_connection
+
+    def counting():
+        attempts.append(1)
+        return real()
+
+    monkeypatch.setattr(backend, "_new_connection", counting)
+    st = backend.status()
+    assert st.connected is False
+    assert len(attempts) == 3
+    assert "accept one connection at a time" in st.detail

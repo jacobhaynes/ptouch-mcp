@@ -26,6 +26,8 @@ class Config:
     tape_mm: float = 24
     margin_mm: float = 2.0
     precut: bool = True
+    connect_timeout: float = 5.0
+    connect_retries: int = 4
     font: str = ""
     dry_run_dir: str = "/tmp/ptouch-mcp"
     max_copies: int = 20
@@ -51,6 +53,8 @@ class Config:
             margin_mm=_num("PTOUCH_MARGIN_MM", cls.margin_mm),
             precut=os.environ.get("PTOUCH_PRECUT", "1").strip().lower()
             not in {"0", "false", "no", "off"},
+            connect_timeout=_num("PTOUCH_CONNECT_TIMEOUT", cls.connect_timeout),
+            connect_retries=_num("PTOUCH_CONNECT_RETRIES", cls.connect_retries, int),
             font=os.environ.get("PTOUCH_FONT", cls.font),
             dry_run_dir=os.environ.get("PTOUCH_DRY_RUN_DIR", cls.dry_run_dir),
             max_copies=_num("PTOUCH_MAX_COPIES", cls.max_copies, int),

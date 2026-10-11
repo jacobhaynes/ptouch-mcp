@@ -163,33 +163,54 @@ class HardwareBackend(Backend):
         super().__init__(cfg)
         self.transport = cfg.transport
 
-    def _connect(self) -> tuple[LabelPrinter, object]:
+    def _new_connection(self):
         if self.cfg.transport == "network":
             if not self.cfg.host:
                 raise PrinterError("PTOUCH_HOST_ADDR must be set when PTOUCH_TRANSPORT=network")
-            conn = ConnectionNetwork(self.cfg.host, port=self.cfg.network_port)
-            where = f"{self.cfg.host}:{self.cfg.network_port}"
-        else:
-            conn = ConnectionUSB()
-            where = "USB"
+            return ConnectionNetwork(
+                self.cfg.host, port=self.cfg.network_port, timeout=self.cfg.connect_timeout
+            ), f"{self.cfg.host}:{self.cfg.network_port}"
+        return ConnectionUSB(), "USB"
 
-        # Constructing the printer is what opens the connection: LabelPrinter's
-        # __init__ calls connect() and writes the initialisation commands. So it
-        # has to happen inside the try, and must not be followed by a second
-        # connect().
-        try:
-            printer = self.model(conn)
-        except PrinterPermissionError as exc:
-            conn.close()
-            raise PrinterError(
-                f"{exc} On Linux, run the container with /dev/bus/usb mounted. "
-                "On macOS the kernel claims printer-class devices and libusb cannot "
-                "take them -- use PTOUCH_BACKEND=dry there."
-            ) from exc
-        except PTOUCH_ERRORS as exc:
-            conn.close()
-            raise PrinterError(f"cannot reach the printer on {where}: {exc}") from exc
-        return printer, conn
+    def _connect(self) -> tuple[LabelPrinter, object]:
+        """Open a connection, retrying a busy printer.
+
+        These printers accept exactly one session at a time. A job that just
+        finished, or P-touch Editor sitting open on someone's desktop, holds the
+        socket and every other attempt times out. That is transient, so retry
+        rather than fail the request.
+
+        Constructing the printer is also what opens the connection -- LabelPrinter's
+        __init__ calls connect() and writes the initialisation commands -- so it has
+        to happen inside the try, and must not be followed by a second connect().
+        """
+        delay, last = 0.5, None
+        for attempt in range(1, max(1, self.cfg.connect_retries) + 1):
+            conn, where = self._new_connection()
+            try:
+                return self.model(conn), conn
+            except PrinterPermissionError as exc:
+                conn.close()
+                raise PrinterError(
+                    f"{exc} On Linux, run the container with /dev/bus/usb mounted. "
+                    "On macOS the kernel claims printer-class devices and libusb "
+                    "cannot take them -- use PTOUCH_BACKEND=dry there."
+                ) from exc
+            except PTOUCH_ERRORS as exc:
+                conn.close()
+                last = exc
+                if attempt < self.cfg.connect_retries:
+                    log.info(
+                        "printer busy on %s (attempt %d/%d): %s; retrying in %.1fs",
+                        where, attempt, self.cfg.connect_retries, exc, delay,
+                    )
+                    time.sleep(delay)
+                    delay *= 2
+        raise PrinterError(
+            f"cannot reach the printer on {where} after {self.cfg.connect_retries} "
+            f"attempts: {last}. These printers accept one connection at a time -- "
+            "check nothing else (P-touch Editor, another print job) is holding it."
+        )
 
     def status(self) -> Status:
         try:
